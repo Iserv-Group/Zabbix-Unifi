@@ -1,0 +1,197 @@
+zabbix_export:
+  version: '5.2'
+  date: '2021-02-26T20:40:22Z'
+  groups:
+    -
+      name: 'Auto Discover'
+    -
+      name: Templates/api
+    -
+      name: Templates/Ubiquiti
+    -
+      name: Ubiquiti/Unifi
+  templates:
+    -
+      template: 'Unifi Device Discovery'
+      name: 'Unifi Device Discovery'
+      description: 'Discovers devices at a given Unifi site for monitoring.'
+      groups:
+        -
+          name: Templates/api
+        -
+          name: Templates/Ubiquiti
+      applications:
+        -
+          name: Devices
+      items:
+        -
+          name: 'Site Status'
+          type: DEPENDENT
+          key: 'site.status[{$SITE_NAME}]'
+          delay: '0'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$.*.state'
+            -
+              type: TRIM
+              parameters:
+                - '[]'
+            -
+              type: JAVASCRIPT
+              parameters:
+                - |
+                  var myArray = value.split(",").map(Number);
+                  var max = myArray.reduce(function(a, b) {
+                      return Math.max(a, b);
+                  });
+                  return max
+          master_item:
+            key: 'unifi.sh[site.data,{$SITE_NAME}]'
+          triggers:
+            -
+              expression: '{max(5m)}=0'
+              name: 'Unifi site {#SITE_ALIAS} Unreachable for 5 min'
+              priority: INFO
+              description: 'All devices at the site {#SITE_ALIAS} have been unreachable for 5 min.'
+              dependencies:
+                -
+                  name: 'Unifi site {#SITE_ALIAS} Unreachable for 15 min'
+                  expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(15m)}=0'
+                -
+                  name: 'Unifi site {#SITE_ALIAS} Unreachable for 30 min'
+                  expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(30m)}=0'
+            -
+              expression: '{max(15m)}=0'
+              name: 'Unifi site {#SITE_ALIAS} Unreachable for 15 min'
+              priority: WARNING
+              description: 'All devices at the site {#SITE_ALIAS} have been unreachable for 15 min.'
+              dependencies:
+                -
+                  name: 'Unifi site {#SITE_ALIAS} Unreachable for 30 min'
+                  expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(30m)}=0'
+            -
+              expression: '{max(30m)}=0'
+              name: 'Unifi site {#SITE_ALIAS} Unreachable for 30 min'
+              priority: AVERAGE
+              description: 'All devices at the site {#SITE_ALIAS} have been unreachable for 30 min.'
+        -
+          name: 'Site data'
+          type: EXTERNAL
+          key: 'unifi.sh[site.data,{$SITE_NAME}]'
+          trends: '0'
+          value_type: TEXT
+      discovery_rules:
+        -
+          name: 'Discover Devices'
+          type: EXTERNAL
+          key: 'unifi.sh[device.discovery,{$SITE_NAME}]'
+          delay: 1d
+          lifetime: 7d
+          item_prototypes:
+            -
+              name: 'Unifi {#DEVICE_NAME} Status'
+              type: DEPENDENT
+              key: 'device.status[{#MAC}]'
+              delay: '0'
+              applications:
+                -
+                  name: Devices
+              preprocessing:
+                -
+                  type: JSONPATH
+                  parameters:
+                    - '$[?(@.mac == ''{#MAC}'')].state'
+                -
+                  type: TRIM
+                  parameters:
+                    - '[]'
+              master_item:
+                key: 'unifi.sh[site.data,{$SITE_NAME}]'
+              trigger_prototypes:
+                -
+                  expression: '{max(10m)}=0'
+                  name: 'Unifi {#DEVICE_NAME} Unreachable for 10 min'
+                  priority: INFO
+                  description: 'Unifi device {#DEVICE_NAME} has been unreachable from the Unifi cloud controller for 10 min.'
+                  dependencies:
+                    -
+                      name: 'Unifi site {#SITE_ALIAS} Unreachable for 5 min'
+                      expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(5m)}=0'
+                    -
+                      name: 'Unifi {#DEVICE_NAME} Unreachable for 20 min'
+                      expression: '{Unifi Device Discovery:device.status[{#MAC}].max(20m)}=0'
+                    -
+                      name: 'Unifi {#DEVICE_NAME} Unreachable for 35 min'
+                      expression: '{Unifi Device Discovery:device.status[{#MAC}].max(35m)}=0'
+                -
+                  expression: '{max(20m)}=0'
+                  name: 'Unifi {#DEVICE_NAME} Unreachable for 20 min'
+                  priority: WARNING
+                  description: 'Unifi device {#DEVICE_NAME} has been unreachable from the Unifi cloud controller for 20 min.'
+                  dependencies:
+                    -
+                      name: 'Unifi site {#SITE_ALIAS} Unreachable for 5 min'
+                      expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(5m)}=0'
+                    -
+                      name: 'Unifi site {#SITE_ALIAS} Unreachable for 15 min'
+                      expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(15m)}=0'
+                    -
+                      name: 'Unifi {#DEVICE_NAME} Unreachable for 35 min'
+                      expression: '{Unifi Device Discovery:device.status[{#MAC}].max(35m)}=0'
+                -
+                  expression: '{max(35m)}=0'
+                  name: 'Unifi {#DEVICE_NAME} Unreachable for 35 min'
+                  priority: AVERAGE
+                  description: 'Unifi device {#DEVICE_NAME} has been unreachable from the Unifi cloud controller for 35 min.'
+                  dependencies:
+                    -
+                      name: 'Unifi site {#SITE_ALIAS} Unreachable for 5 min'
+                      expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(5m)}=0'
+                    -
+                      name: 'Unifi site {#SITE_ALIAS} Unreachable for 15 min'
+                      expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(15m)}=0'
+                    -
+                      name: 'Unifi site {#SITE_ALIAS} Unreachable for 30 min'
+                      expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(30m)}=0'
+    -
+      template: 'Unifi Site Discovery'
+      name: 'Unifi Site Discovery'
+      description: 'Template that uses External Checks to discover Unifi Sites'
+      groups:
+        -
+          name: Templates/api
+        -
+          name: Templates/Ubiquiti
+      discovery_rules:
+        -
+          name: 'Discover Unifi Sites'
+          type: EXTERNAL
+          key: 'unifi.sh[site.discovery]'
+          delay: 1d
+          host_prototypes:
+            -
+              host: 'Unifi {#SITE_ALIAS}'
+              name: 'Unifi {#SITE_ALIAS}'
+              group_links:
+                -
+                  group:
+                    name: 'Auto Discover'
+                -
+                  group:
+                    name: Ubiquiti/Unifi
+              templates:
+                -
+                  name: 'Unifi Device Discovery'
+              macros:
+                -
+                  macro: '{$SITE_NAME}'
+                  value: '{#SITE_NAME}'
+              custom_interfaces: 'YES'
+              interfaces:
+                -
+                  type: SNMP
+                  port: '161'
+                  details:
+                    community: '{$SNMP_COMMUNITY}'
