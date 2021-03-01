@@ -9,9 +9,9 @@
  1.	Start by downloading the repository and moving both scripts to your Zabbix installation.
  2.	Place the unifi_status.sh script in a secure location on the Zabbix server and limit the read/write privileges on the script to super users to protect your API key. 
  3.	Modify the variables at the top of the unifi_status.sh script
-	i. Enter the URL or IP of your controller
-	ii.	Add credentials for the API to use
-	iii. Change the output folder to the location of the externalscripts folder of your Zabbix installation 
+	1. Enter the URL or IP of your controller
+	2.	Add credentials for the API to use
+	3. Change the output folder to the location of the externalscripts folder of your Zabbix installation 
  4. Place the unifi.sh script in the externalscripts folder.
  5. Modify the folder variables at the top of the unifi.sh script to match your installation 
  6.	Run the unifi_status.sh script to see if a valid json file is created at externalscripts/unifi.json
