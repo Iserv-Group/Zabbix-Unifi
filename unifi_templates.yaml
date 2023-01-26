@@ -1,17 +1,26 @@
 zabbix_export:
-  version: '5.2'
-  date: '2021-02-26T20:40:22Z'
-  groups:
+  version: '6.2'
+  date: '2023-01-26T21:03:45Z'
+  template_groups:
     -
-      name: 'Auto Discover'
-    -
+      uuid: 7936c08607e34b5eb4cdcb1e64eeaac3
       name: Templates/api
     -
+      uuid: 26496da678544eb99e4e7158f70aff95
       name: Templates/Ubiquiti
+  host_groups:
     -
+      uuid: d1c160d1bdcd457a978223e68346ac5a
+      name: 'Auto Discover'
+    -
+      uuid: df34c664b5744f9ca4383bfa675d658a
+      name: NOC_Alerts
+    -
+      uuid: af433ddb8b2447d091481b6c695f0a38
       name: Ubiquiti/Unifi
   templates:
     -
+      uuid: dafb9ab98f5449c7ad907115de90e6ba
       template: 'Unifi Device Discovery'
       name: 'Unifi Device Discovery'
       description: 'Discovers devices at a given Unifi site for monitoring.'
@@ -20,11 +29,84 @@ zabbix_export:
           name: Templates/api
         -
           name: Templates/Ubiquiti
-      applications:
-        -
-          name: Devices
       items:
         -
+          uuid: 4672b48664a64eeb9903a25e9788a1f7
+          name: 'Site data'
+          type: SCRIPT
+          key: data.pull
+          history: 1h
+          trends: '0'
+          value_type: TEXT
+          params: |
+            function get_data() {
+                try {
+                    var parameters = JSON.parse(value);
+                    var req = new HttpRequest();
+                    var login_url = parameters.base_url + 'api/login'
+                    var url = parameters.base_url + api_Object
+                    req.addHeader("Content-Type", 'application/json');
+                    //Set login details
+                    var creds = {};
+                    creds.username = parameters.username;
+                    creds.password = parameters.password;
+                    creds = JSON.stringify(creds);
+                    
+                    //Login to the Unifi appliance
+                    var lres = req.post(login_url,creds);
+                    if (req.getStatus() != 200) {
+                        return (JSON.stringify(lres))
+                        //throw 'Response code: ' + req.getStatus());
+                    }
+            
+                    //Retrieve data
+                    var res = req.get(url);
+                    if (req.getStatus() != 200) {
+                        return (JSON.stringify(res))
+                        //throw 'Response code: ' + req.getStatus());
+                    }
+            
+                    //Logout from the appliance
+                    var login_url = parameters.base_url + 'api/logout'
+                    var lres = req.post(login_url);
+            
+                    var data = JSON.parse(res);
+            
+                    return (JSON.stringify(data));
+            
+                } catch (error) {
+                    Zabbix.Log(3, "Error message 'warning': " + error);
+                    return error ;
+                }
+                
+            }
+            var parameters = JSON.parse(value);
+            //Set api_Object
+            
+            api_Object = 'api/s/' + parameters.site_name + '/stat/device-basic'
+            
+            
+            return get_data()
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - $.data
+          parameters:
+            -
+              name: base_url
+              value: '{$BASE_URL}'
+            -
+              name: username
+              value: '{$USERNAME}'
+            -
+              name: password
+              value: '{$PASSWORD}'
+            -
+              name: site_name
+              value: '{$SITE_NAME}'
+        -
+          uuid: a81671d0c93a49ce9a678a89e4425e6c
           name: 'Site Status'
           type: DEPENDENT
           key: 'site.status[{$SITE_NAME}]'
@@ -48,56 +130,52 @@ zabbix_export:
                   });
                   return max
           master_item:
-            key: 'unifi.sh[site.data,{$SITE_NAME}]'
+            key: data.pull
           triggers:
             -
-              expression: '{max(5m)}=0'
-              name: 'Unifi site {#SITE_ALIAS} Unreachable for 5 min'
+              uuid: 4899d87fbc2842f49d5d13b561f1da59
+              expression: 'max(/Unifi Device Discovery/site.status[{$SITE_NAME}],5m)=0'
+              name: 'Unifi site {$SITE_ALIAS} Unreachable for 5 min'
               priority: INFO
               description: 'All devices at the site {#SITE_ALIAS} have been unreachable for 5 min.'
               dependencies:
                 -
-                  name: 'Unifi site {#SITE_ALIAS} Unreachable for 15 min'
-                  expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(15m)}=0'
+                  name: 'Unifi site {$SITE_ALIAS} Unreachable for 15 min'
+                  expression: 'max(/Unifi Device Discovery/site.status[{$SITE_NAME}],15m)=0'
                 -
-                  name: 'Unifi site {#SITE_ALIAS} Unreachable for 30 min'
-                  expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(30m)}=0'
+                  name: 'Unifi site {$SITE_ALIAS} Unreachable for 30 min'
+                  expression: 'max(/Unifi Device Discovery/site.status[{$SITE_NAME}],30m)=0'
             -
-              expression: '{max(15m)}=0'
-              name: 'Unifi site {#SITE_ALIAS} Unreachable for 15 min'
+              uuid: 36789374869e4d318a3fd30a4a52a04b
+              expression: 'max(/Unifi Device Discovery/site.status[{$SITE_NAME}],15m)=0'
+              name: 'Unifi site {$SITE_ALIAS} Unreachable for 15 min'
               priority: WARNING
               description: 'All devices at the site {#SITE_ALIAS} have been unreachable for 15 min.'
               dependencies:
                 -
-                  name: 'Unifi site {#SITE_ALIAS} Unreachable for 30 min'
-                  expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(30m)}=0'
+                  name: 'Unifi site {$SITE_ALIAS} Unreachable for 30 min'
+                  expression: 'max(/Unifi Device Discovery/site.status[{$SITE_NAME}],30m)=0'
             -
-              expression: '{max(30m)}=0'
-              name: 'Unifi site {#SITE_ALIAS} Unreachable for 30 min'
+              uuid: e9b0a60ca99b4835a17d5038754dfcb9
+              expression: 'max(/Unifi Device Discovery/site.status[{$SITE_NAME}],30m)=0'
+              name: 'Unifi site {$SITE_ALIAS} Unreachable for 30 min'
               priority: AVERAGE
               description: 'All devices at the site {#SITE_ALIAS} have been unreachable for 30 min.'
-        -
-          name: 'Site data'
-          type: EXTERNAL
-          key: 'unifi.sh[site.data,{$SITE_NAME}]'
-          trends: '0'
-          value_type: TEXT
       discovery_rules:
         -
+          uuid: 489ee47a7c1b40b5a7d6402a4ec203b0
           name: 'Discover Devices'
-          type: EXTERNAL
-          key: 'unifi.sh[device.discovery,{$SITE_NAME}]'
-          delay: 1d
+          type: DEPENDENT
+          key: device.discovery
+          delay: '0'
           lifetime: 7d
           item_prototypes:
             -
+              uuid: 94a4aa0e29a447b2a23e4160c4125867
               name: 'Unifi {#DEVICE_NAME} Status'
               type: DEPENDENT
               key: 'device.status[{#MAC}]'
               delay: '0'
-              applications:
-                -
-                  name: Devices
               preprocessing:
                 -
                   type: JSONPATH
@@ -108,54 +186,83 @@ zabbix_export:
                   parameters:
                     - '[]'
               master_item:
-                key: 'unifi.sh[site.data,{$SITE_NAME}]'
+                key: data.pull
+              tags:
+                -
+                  tag: Application
+                  value: Devices
               trigger_prototypes:
                 -
-                  expression: '{max(10m)}=0'
+                  uuid: 523fc28bc57547bbac893359f03cd0ff
+                  expression: 'max(/Unifi Device Discovery/device.status[{#MAC}],10m)=0'
                   name: 'Unifi {#DEVICE_NAME} Unreachable for 10 min'
                   priority: INFO
                   description: 'Unifi device {#DEVICE_NAME} has been unreachable from the Unifi cloud controller for 10 min.'
                   dependencies:
                     -
-                      name: 'Unifi site {#SITE_ALIAS} Unreachable for 5 min'
-                      expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(5m)}=0'
+                      name: 'Unifi site {$SITE_ALIAS} Unreachable for 5 min'
+                      expression: 'max(/Unifi Device Discovery/site.status[{$SITE_NAME}],5m)=0'
                     -
                       name: 'Unifi {#DEVICE_NAME} Unreachable for 20 min'
-                      expression: '{Unifi Device Discovery:device.status[{#MAC}].max(20m)}=0'
+                      expression: 'max(/Unifi Device Discovery/device.status[{#MAC}],20m)=0'
                     -
                       name: 'Unifi {#DEVICE_NAME} Unreachable for 35 min'
-                      expression: '{Unifi Device Discovery:device.status[{#MAC}].max(35m)}=0'
+                      expression: 'max(/Unifi Device Discovery/device.status[{#MAC}],35m)=0'
+                  tags:
+                    -
+                      tag: Device
+                      value: '{#DEVICE_NAME}'
                 -
-                  expression: '{max(20m)}=0'
+                  uuid: 3ce31078de85428392f2790fc465f7d2
+                  expression: 'max(/Unifi Device Discovery/device.status[{#MAC}],20m)=0'
                   name: 'Unifi {#DEVICE_NAME} Unreachable for 20 min'
                   priority: WARNING
                   description: 'Unifi device {#DEVICE_NAME} has been unreachable from the Unifi cloud controller for 20 min.'
                   dependencies:
                     -
-                      name: 'Unifi site {#SITE_ALIAS} Unreachable for 5 min'
-                      expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(5m)}=0'
+                      name: 'Unifi site {$SITE_ALIAS} Unreachable for 5 min'
+                      expression: 'max(/Unifi Device Discovery/site.status[{$SITE_NAME}],5m)=0'
                     -
-                      name: 'Unifi site {#SITE_ALIAS} Unreachable for 15 min'
-                      expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(15m)}=0'
+                      name: 'Unifi site {$SITE_ALIAS} Unreachable for 15 min'
+                      expression: 'max(/Unifi Device Discovery/site.status[{$SITE_NAME}],15m)=0'
                     -
                       name: 'Unifi {#DEVICE_NAME} Unreachable for 35 min'
-                      expression: '{Unifi Device Discovery:device.status[{#MAC}].max(35m)}=0'
+                      expression: 'max(/Unifi Device Discovery/device.status[{#MAC}],35m)=0'
+                  tags:
+                    -
+                      tag: Device
+                      value: '{#DEVICE_NAME}'
                 -
-                  expression: '{max(35m)}=0'
+                  uuid: f9a1c2755e7a431db7c0243c01870be3
+                  expression: 'max(/Unifi Device Discovery/device.status[{#MAC}],35m)=0'
                   name: 'Unifi {#DEVICE_NAME} Unreachable for 35 min'
                   priority: AVERAGE
                   description: 'Unifi device {#DEVICE_NAME} has been unreachable from the Unifi cloud controller for 35 min.'
                   dependencies:
                     -
-                      name: 'Unifi site {#SITE_ALIAS} Unreachable for 5 min'
-                      expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(5m)}=0'
+                      name: 'Unifi site {$SITE_ALIAS} Unreachable for 5 min'
+                      expression: 'max(/Unifi Device Discovery/site.status[{$SITE_NAME}],5m)=0'
                     -
-                      name: 'Unifi site {#SITE_ALIAS} Unreachable for 15 min'
-                      expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(15m)}=0'
+                      name: 'Unifi site {$SITE_ALIAS} Unreachable for 15 min'
+                      expression: 'max(/Unifi Device Discovery/site.status[{$SITE_NAME}],15m)=0'
                     -
-                      name: 'Unifi site {#SITE_ALIAS} Unreachable for 30 min'
-                      expression: '{Unifi Device Discovery:site.status[{$SITE_NAME}].max(30m)}=0'
+                      name: 'Unifi site {$SITE_ALIAS} Unreachable for 30 min'
+                      expression: 'max(/Unifi Device Discovery/site.status[{$SITE_NAME}],30m)=0'
+                  tags:
+                    -
+                      tag: Device
+                      value: '{#DEVICE_NAME}'
+          master_item:
+            key: data.pull
+          lld_macro_paths:
+            -
+              lld_macro: '{#DEVICE_NAME}'
+              path: $.name
+            -
+              lld_macro: '{#MAC}'
+              path: $.mac
     -
+      uuid: 27376e2507f0425dace4d4eaa974ebcc
       template: 'Unifi Site Discovery'
       name: 'Unifi Site Discovery'
       description: 'Template that uses External Checks to discover Unifi Sites'
@@ -166,12 +273,75 @@ zabbix_export:
           name: Templates/Ubiquiti
       discovery_rules:
         -
+          uuid: 3f88a0edf71e4d06b6bf44b3cfe0b1b5
           name: 'Discover Unifi Sites'
-          type: EXTERNAL
-          key: 'unifi.sh[site.discovery]'
+          type: SCRIPT
+          key: unifi.site.discovery
           delay: 1d
+          params: |
+            function get_data() {
+                try {
+                    var parameters = JSON.parse(value);
+                    var req = new HttpRequest();
+                    var login_url = parameters.base_url + 'api/login'
+                    var url = parameters.base_url + api_Object
+                    req.addHeader("Content-Type", 'application/json');
+                    //Set login details
+                    var creds = {};
+                    creds.username = parameters.username;
+                    creds.password = parameters.password;
+                    creds = JSON.stringify(creds);
+                    
+                    //Login to the Unifi appliance
+                    var lres = req.post(login_url,creds);
+                    if (req.getStatus() != 200) {
+                        return (JSON.stringify(lres))
+                        //throw 'Response code: ' + req.getStatus());
+                    }
+            
+                    //Retrieve data
+                    var res = req.get(url);
+                    if (req.getStatus() != 200) {
+                        return (JSON.stringify(res))
+                        //throw 'Response code: ' + req.getStatus());
+                    }
+            
+                    //Logout from the appliance
+                    var login_url = parameters.base_url + 'api/logout'
+                    var lres = req.post(login_url);
+            
+                    var data = JSON.parse(res);
+            
+                    return (JSON.stringify(data));
+            
+                } catch (error) {
+                    Zabbix.Log(3, "Error message 'warning': " + error);
+                    return error ;
+                }
+                
+            }
+            var parameters = JSON.parse(value);
+            //Set api_Object
+            api_Object = 'api/self/sites'
+            
+            
+            return get_data()
+          filter:
+            evaltype: OR
+            conditions:
+              -
+                macro: '{#SITE_ALIAS}'
+                value: ^Default$
+                operator: NOT_MATCHES_REGEX
+                formulaid: A
+              -
+                macro: '{#SITE_ALIAS}'
+                value: '^.*(IGNORE)(?i).*$'
+                operator: NOT_MATCHES_REGEX
+                formulaid: B
           host_prototypes:
             -
+              uuid: 8918603549ff4650b5d2c70e56d1ff41
               host: 'Unifi {#SITE_ALIAS}'
               name: 'Unifi {#SITE_ALIAS}'
               group_links:
@@ -180,11 +350,17 @@ zabbix_export:
                     name: 'Auto Discover'
                 -
                   group:
+                    name: NOC_Alerts
+                -
+                  group:
                     name: Ubiquiti/Unifi
               templates:
                 -
                   name: 'Unifi Device Discovery'
               macros:
+                -
+                  macro: '{$SITE_ALIAS}'
+                  value: '{#SITE_ALIAS}'
                 -
                   macro: '{$SITE_NAME}'
                   value: '{#SITE_NAME}'
@@ -195,3 +371,449 @@ zabbix_export:
                   port: '161'
                   details:
                     community: '{$SNMP_COMMUNITY}'
+          parameters:
+            -
+              name: base_url
+              value: '{$BASE_URL}'
+            -
+              name: password
+              value: '{$PASSWORD}'
+            -
+              name: username
+              value: '{$USERNAME}'
+          lld_macro_paths:
+            -
+              lld_macro: '{#SITE_ALIAS}'
+              path: $.desc
+            -
+              lld_macro: '{#SITE_ID}'
+              path: $._id
+            -
+              lld_macro: '{#SITE_NAME}'
+              path: $.name
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - $.data
+            -
+              type: JAVASCRIPT
+              parameters:
+                - |
+                  //Script removes characters that Zabbix can't have in Host names
+                  var sites = JSON.parse(value);
+                  var regex = /[!@#\$%\^&\*:]/;
+                  for (var i=0; i < sites.length;i++)
+                  {
+                     sites[i].desc = sites[i].desc.replace(regex, '')
+                  }
+                  return JSON.stringify(sites)
+      macros:
+        -
+          macro: '{$BASE_URL}'
+          description: 'Unifi controller domain name/IP and web port number'
+        -
+          macro: '{$PASSWORD}'
+          type: SECRET_TEXT
+          description: 'Unifi controller Password'
+        -
+          macro: '{$USERNAME}'
+          description: 'Unifi controller Username'
+    -
+      uuid: 09c5df5954364eccae6c6e8207020c7d
+      template: 'Unifi UDMP Device Discovery'
+      name: 'Unifi UDMP Device Discovery'
+      description: 'Discovers devices at a given Unifi site for monitoring.'
+      groups:
+        -
+          name: Templates/api
+        -
+          name: Templates/Ubiquiti
+      items:
+        -
+          uuid: b62a5bb7e4884c7ea4288f97bdd3b7ad
+          name: 'Site data'
+          type: SCRIPT
+          key: data.pull
+          history: 1h
+          trends: '0'
+          value_type: TEXT
+          params: |
+            function get_data() {
+                try {
+                    var parameters = JSON.parse(value);
+                    var req = new HttpRequest();
+                    var login_url = parameters.base_url + 'api/auth/login'
+                    var url = parameters.base_url + api_Object
+            
+                    //Set login details
+                    var creds = {};
+                    creds.username = parameters.username;
+                    creds.password = parameters.password;
+                    creds = JSON.stringify(creds)
+                    
+                    //Login to the Unifi appliance
+                    var lres = req.post(login_url,creds);
+                    if (req.getStatus() != 200) {
+                        return (JSON.stringify(lres))
+                        //throw 'Response code: ' + req.getStatus());
+                    }
+            
+                    //Retrieve data
+                    var res = req.get(url);
+                    if (req.getStatus() != 200) {
+                        return (JSON.stringify(res))
+                        //throw 'Response code: ' + req.getStatus());
+                    }
+            
+                    //Logout from the appliance
+                    var login_url = parameters.base_url + 'api/logout'
+                    var lres = req.post(login_url);
+            
+                    var data = JSON.parse(res);
+            
+                    return (JSON.stringify(data));
+            
+                } catch (error) {
+                    Zabbix.Log(3, "Error message 'warning': " + error);
+                    return error ;
+                }
+                
+            }
+            var parameters = JSON.parse(value);
+            
+            //Set api_Object
+            api_Object = 'proxy/network/' + 'api/s/' + parameters.site_name + '/stat/device-basic'
+            
+            
+            return get_data()
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - $.data
+          parameters:
+            -
+              name: base_url
+              value: '{$BASE_URL}'
+            -
+              name: username
+              value: '{$USERNAME}'
+            -
+              name: password
+              value: '{$PASSWORD}'
+            -
+              name: site_name
+              value: '{$SITE_NAME}'
+        -
+          uuid: c791b9d831c3461daedadc45133b795e
+          name: 'Site Status'
+          type: DEPENDENT
+          key: 'site.status[{$SITE_NAME}]'
+          delay: '0'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$.*.state'
+            -
+              type: TRIM
+              parameters:
+                - '[]'
+            -
+              type: JAVASCRIPT
+              parameters:
+                - |
+                  var myArray = value.split(",").map(Number);
+                  var max = myArray.reduce(function(a, b) {
+                      return Math.max(a, b);
+                  });
+                  return max
+          master_item:
+            key: data.pull
+          triggers:
+            -
+              uuid: 129c492406d548ffb9b2717833e2740c
+              expression: 'max(/Unifi UDMP Device Discovery/site.status[{$SITE_NAME}],5m)=0'
+              name: 'Unifi site {$SITE_ALIAS} Unreachable for 5 min'
+              priority: INFO
+              description: 'All devices at the site {#SITE_ALIAS} have been unreachable for 5 min.'
+              dependencies:
+                -
+                  name: 'Unifi site {$SITE_ALIAS} Unreachable for 15 min'
+                  expression: 'max(/Unifi UDMP Device Discovery/site.status[{$SITE_NAME}],15m)=0'
+                -
+                  name: 'Unifi site {$SITE_ALIAS} Unreachable for 30 min'
+                  expression: 'max(/Unifi UDMP Device Discovery/site.status[{$SITE_NAME}],30m)=0'
+            -
+              uuid: 3756b6b815a04b91929151fb8c508d82
+              expression: 'max(/Unifi UDMP Device Discovery/site.status[{$SITE_NAME}],15m)=0'
+              name: 'Unifi site {$SITE_ALIAS} Unreachable for 15 min'
+              priority: WARNING
+              description: 'All devices at the site {#SITE_ALIAS} have been unreachable for 15 min.'
+              dependencies:
+                -
+                  name: 'Unifi site {$SITE_ALIAS} Unreachable for 30 min'
+                  expression: 'max(/Unifi UDMP Device Discovery/site.status[{$SITE_NAME}],30m)=0'
+            -
+              uuid: 980199c994da48f8bed1af65e3a929e1
+              expression: 'max(/Unifi UDMP Device Discovery/site.status[{$SITE_NAME}],30m)=0'
+              name: 'Unifi site {$SITE_ALIAS} Unreachable for 30 min'
+              priority: AVERAGE
+              description: 'All devices at the site {#SITE_ALIAS} have been unreachable for 30 min.'
+      discovery_rules:
+        -
+          uuid: 60753cca339a4de8aed2157455ddf41b
+          name: 'Discover Devices'
+          type: DEPENDENT
+          key: device.discovery
+          delay: '0'
+          lifetime: 7d
+          item_prototypes:
+            -
+              uuid: 4e124c6f53c44f348417fc06ab4ba22b
+              name: 'Unifi {#DEVICE_NAME} Status'
+              type: DEPENDENT
+              key: 'device.status[{#MAC}]'
+              delay: '0'
+              preprocessing:
+                -
+                  type: JSONPATH
+                  parameters:
+                    - '$[?(@.mac == ''{#MAC}'')].state'
+                -
+                  type: TRIM
+                  parameters:
+                    - '[]'
+              master_item:
+                key: data.pull
+              tags:
+                -
+                  tag: Application
+                  value: Devices
+              trigger_prototypes:
+                -
+                  uuid: 8d6ebff8231849d8a8a4cbb2182816ef
+                  expression: 'max(/Unifi UDMP Device Discovery/device.status[{#MAC}],10m)=0'
+                  name: 'Unifi {#DEVICE_NAME} Unreachable for 10 min'
+                  priority: INFO
+                  description: 'Unifi device {#DEVICE_NAME} has been unreachable from the Unifi cloud controller for 10 min.'
+                  dependencies:
+                    -
+                      name: 'Unifi site {$SITE_ALIAS} Unreachable for 5 min'
+                      expression: 'max(/Unifi UDMP Device Discovery/site.status[{$SITE_NAME}],5m)=0'
+                    -
+                      name: 'Unifi {#DEVICE_NAME} Unreachable for 20 min'
+                      expression: 'max(/Unifi UDMP Device Discovery/device.status[{#MAC}],20m)=0'
+                    -
+                      name: 'Unifi {#DEVICE_NAME} Unreachable for 35 min'
+                      expression: 'max(/Unifi UDMP Device Discovery/device.status[{#MAC}],35m)=0'
+                  tags:
+                    -
+                      tag: Device
+                      value: '{#DEVICE_NAME}'
+                -
+                  uuid: 91fa728f7b804e1798fd9c3829056494
+                  expression: 'max(/Unifi UDMP Device Discovery/device.status[{#MAC}],20m)=0'
+                  name: 'Unifi {#DEVICE_NAME} Unreachable for 20 min'
+                  priority: WARNING
+                  description: 'Unifi device {#DEVICE_NAME} has been unreachable from the Unifi cloud controller for 20 min.'
+                  dependencies:
+                    -
+                      name: 'Unifi site {$SITE_ALIAS} Unreachable for 5 min'
+                      expression: 'max(/Unifi UDMP Device Discovery/site.status[{$SITE_NAME}],5m)=0'
+                    -
+                      name: 'Unifi site {$SITE_ALIAS} Unreachable for 15 min'
+                      expression: 'max(/Unifi UDMP Device Discovery/site.status[{$SITE_NAME}],15m)=0'
+                    -
+                      name: 'Unifi {#DEVICE_NAME} Unreachable for 35 min'
+                      expression: 'max(/Unifi UDMP Device Discovery/device.status[{#MAC}],35m)=0'
+                  tags:
+                    -
+                      tag: Device
+                      value: '{#DEVICE_NAME}'
+                -
+                  uuid: 0dc30d87db7d4a53be1aee1e18e6d103
+                  expression: 'max(/Unifi UDMP Device Discovery/device.status[{#MAC}],35m)=0'
+                  name: 'Unifi {#DEVICE_NAME} Unreachable for 35 min'
+                  priority: AVERAGE
+                  description: 'Unifi device {#DEVICE_NAME} has been unreachable from the Unifi cloud controller for 35 min.'
+                  dependencies:
+                    -
+                      name: 'Unifi site {$SITE_ALIAS} Unreachable for 5 min'
+                      expression: 'max(/Unifi UDMP Device Discovery/site.status[{$SITE_NAME}],5m)=0'
+                    -
+                      name: 'Unifi site {$SITE_ALIAS} Unreachable for 15 min'
+                      expression: 'max(/Unifi UDMP Device Discovery/site.status[{$SITE_NAME}],15m)=0'
+                    -
+                      name: 'Unifi site {$SITE_ALIAS} Unreachable for 30 min'
+                      expression: 'max(/Unifi UDMP Device Discovery/site.status[{$SITE_NAME}],30m)=0'
+                  tags:
+                    -
+                      tag: Device
+                      value: '{#DEVICE_NAME}'
+          master_item:
+            key: data.pull
+          lld_macro_paths:
+            -
+              lld_macro: '{#DEVICE_NAME}'
+              path: $.name
+            -
+              lld_macro: '{#MAC}'
+              path: $.mac
+    -
+      uuid: ca2977d924a64fafa8656a120912dde5
+      template: 'Unifi UDMP Site Discovery'
+      name: 'Unifi UDMP Site Discovery'
+      description: 'Template that uses External Checks to discover Unifi Sites'
+      groups:
+        -
+          name: Templates/api
+        -
+          name: Templates/Ubiquiti
+      discovery_rules:
+        -
+          uuid: 401c25d01b60415087c0f752c348419b
+          name: 'Discover Unifi Sites'
+          type: SCRIPT
+          key: unifi.site.discovery
+          delay: 1d
+          params: |
+            function get_data() {
+                try {
+                    var parameters = JSON.parse(value);
+                    var req = new HttpRequest();
+                    var login_url = parameters.base_url + 'api/auth/login'
+                    var url = parameters.base_url + api_Object
+            
+                    //Set login details
+                    var creds = {};
+                    creds.username = parameters.username;
+                    creds.password = parameters.password;
+                    creds = JSON.stringify(creds)
+            
+                    //Login to the Unifi appliance
+                    var lres = req.post(login_url,creds);
+                    if (req.getStatus() != 200) {
+                        return (JSON.stringify(lres))
+                        //throw 'Response code: ' + req.getStatus());
+                    }
+            
+                    //Retrieve data
+                    var res = req.get(url);
+                    if (req.getStatus() != 200) {
+                        return (JSON.stringify(res))
+                        //throw 'Response code: ' + req.getStatus());
+                    }
+            
+                    //Logout from the appliance
+                    var login_url = parameters.base_url + 'api/logout'
+                    var lres = req.post(login_url);
+            
+                    var data = JSON.parse(res);
+            
+                    return (JSON.stringify(data));
+            
+                } catch (error) {
+                    Zabbix.Log(3, "Error message 'warning': " + error);
+                    return error ;
+                }
+                
+            }
+            //Set api_Object
+            api_Object = 'proxy/network/api/self/sites'
+            
+            
+            return get_data()
+          filter:
+            evaltype: OR
+            conditions:
+              -
+                macro: '{#SITE_ALIAS}'
+                value: ^Default$
+                operator: NOT_MATCHES_REGEX
+                formulaid: A
+              -
+                macro: '{#SITE_ALIAS}'
+                value: '^.*(IGNORE)(?i).*$'
+                operator: NOT_MATCHES_REGEX
+                formulaid: B
+          host_prototypes:
+            -
+              uuid: f1b0e7e8907946aab64ff606b1e11eb7
+              host: 'Unifi {#SITE_ALIAS}'
+              name: 'Unifi {#SITE_ALIAS}'
+              group_links:
+                -
+                  group:
+                    name: 'Auto Discover'
+                -
+                  group:
+                    name: NOC_Alerts
+                -
+                  group:
+                    name: Ubiquiti/Unifi
+              templates:
+                -
+                  name: 'Unifi UDMP Device Discovery'
+              macros:
+                -
+                  macro: '{$SITE_ALIAS}'
+                  value: '{#SITE_ALIAS}'
+                -
+                  macro: '{$SITE_NAME}'
+                  value: '{#SITE_NAME}'
+              custom_interfaces: 'YES'
+              interfaces:
+                -
+                  type: SNMP
+                  port: '161'
+                  details:
+                    community: '{$SNMP_COMMUNITY}'
+          parameters:
+            -
+              name: base_url
+              value: '{$BASE_URL}'
+            -
+              name: password
+              value: '{$PASSWORD}'
+            -
+              name: username
+              value: '{$USERNAME}'
+          lld_macro_paths:
+            -
+              lld_macro: '{#SITE_ALIAS}'
+              path: $.desc
+            -
+              lld_macro: '{#SITE_ID}'
+              path: $._id
+            -
+              lld_macro: '{#SITE_NAME}'
+              path: $.name
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - $.data
+            -
+              type: JAVASCRIPT
+              parameters:
+                - |
+                  //Script removes characters that Zabbix can't have in Host names
+                  var sites = JSON.parse(value);
+                  var regex = /[!@#\$%\^&\*:]/;
+                  for (var i=0; i < sites.length;i++)
+                  {
+                     sites[i].desc = sites[i].desc.replace(regex, '')
+                  }
+                  return JSON.stringify(sites)
+      macros:
+        -
+          macro: '{$BASE_URL}'
+          description: 'Unifi controller domain name/IP and web port number'
+        -
+          macro: '{$PASSWORD}'
+          description: 'Unifi controller Password'
+        -
+          macro: '{$USERNAME}'
+          description: 'Unifi controller Username'
